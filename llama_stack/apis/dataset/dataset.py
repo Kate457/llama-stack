@@ -4,18 +4,14 @@
 # This source code is licensed under the terms described in the LICENSE file in
 # the root directory of this source tree.
 
-from enum import Enum
-from typing import Any, Dict, Optional, Protocol
-
-from llama_models.llama3.api.datatypes import URL
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from llama_models.schema_utils import json_schema_type, webmethod
-
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 @json_schema_type
-class TrainEvalDatasetColumnType(Enum):
+class DatasetColumnType(Enum):
     dialog = "dialog"
     text = "text"
     media = "media"
@@ -23,41 +19,35 @@ class TrainEvalDatasetColumnType(Enum):
     json = "json"
 
 
-@json_schema_type
-class TrainEvalDataset(BaseModel):
-    """Dataset to be used for training or evaluating language models."""
-
-    # TODO(ashwin): figure out if we need to add an enum for a "dataset type"
-
-    columns: Dict[str, TrainEvalDatasetColumnType]
+class DatasetDef(BaseModel):
+    identifier: str = Field(
+        description="A unique name for the dataset",
+    )
+    columns: Dict[str, DatasetColumnType]
     content_url: URL
-    metadata: Optional[Dict[str, Any]] = None
+    storage_format: str
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Any additional metadata for the dataset",
+    )
 
 
 @json_schema_type
-class CreateDatasetRequest(BaseModel):
-    """Request to create a dataset."""
+class DatasetDefWithProvider(DatasetDef):
+    provider_id: str = Field(
+        description="ID of the provider which serves this dataset",
+    )
 
-    uuid: str
-    dataset: TrainEvalDataset
 
-
+@runtime_checkable
 class Datasets(Protocol):
-    @webmethod(route="/datasets/create")
-    def create_dataset(
-        self,
-        uuid: str,
-        dataset: TrainEvalDataset,
-    ) -> None: ...
+    @webmethod(route="/datasets/list", method="GET")
+    async def list_datasets(self) -> List[DatasetDefWithProvider]: ...
 
-    @webmethod(route="/datasets/get")
-    def get_dataset(
-        self,
-        dataset_uuid: str,
-    ) -> TrainEvalDataset: ...
+    @webmethod(route="/datasets/get", method="GET")
+    async def get_dataset(
+        self, identifier: str
+    ) -> Optional[DatasetDefWithProvider]: ...
 
-    @webmethod(route="/datasets/delete")
-    def delete_dataset(
-        self,
-        dataset_uuid: str,
-    ) -> None: ...
+    @webmethod(route="/datasets/register", method="POST")
+    async def register_dataset(self, model: DatasetDefWithProvider) -> None: ...
